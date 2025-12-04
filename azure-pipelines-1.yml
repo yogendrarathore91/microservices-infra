@@ -1,0 +1,26 @@
+trigger: none
+
+pool: The Pipeline Agent Yogi
+
+steps:
+- checkout: self
+
+# 1) Terraform install
+- task: TerraformInstaller@1
+  displayName: Install Terraform
+  inputs:
+    terraformVersion: '1.13.5'
+
+# 2) terraform init with remote backend
+- task: TerraformTaskV4@4
+  displayName: terraform init
+  inputs:
+    provider: 'azurerm'
+    command: 'init'
+    workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+    backendServiceArm: 'svc-nov'
+    backendAzureRmOverrideSubscriptionID: '14c9203d-48fc-4de2-88d2-8c1ce158301c'
+    backendAzureRmResourceGroupName: 'pipeline-rg'
+    backendAzureRmStorageAccountName: 'chilliii1234'
+    backendAzureRmContainerName: 'billu'
+    backendAzureRmKey: 'yogi.tfstate'
