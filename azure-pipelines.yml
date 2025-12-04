@@ -1,0 +1,167 @@
+pool: Default
+
+trigger: none 
+
+stages:
+# =========================
+# 1. Pre-Commit / Static Analysis
+# =========================
+- stage: PreCommit
+  displayName: Pre-Commit / Static Analysis Stage
+  jobs: 
+  - job: TerraformValidate
+    displayName: Terraform Validate
+    steps:
+    - task: TerraformTask@5
+      displayName: Terraform Init
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev'
+        backendServiceArm: 'The Pipeline Agent Yogi'
+        backendAzureRmResourceGroupName: 'pipeline-rg'
+        backendAzureRmStorageAccountName: 'chilliii1234'
+        backendAzureRmContainerName: 'billu'
+        backendAzureRmKey: 'yogi.tfstate'
+
+    - task: TerraformTask@5
+      displayName: Terraform Validate
+      inputs:
+        provider: 'azurerm'
+        command: 'validate'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev'
+
+  - job: TerraformFmt
+    dependsOn: TerraformValidate
+    displayName: Terraform Fmt
+    steps:
+    - task: TerraformTask@5
+      displayName: Terraform Fmt
+      inputs:
+        provider: 'azurerm'
+        command: 'custom'
+        environmentServiceNameAzureRM: 'The Pipeline Agent Yogi'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev'
+        outputTo: 'console'
+        customCommand: 'fmt'
+
+  - job: tfsec
+    dependsOn: TerraformFmt
+    displayName: TfSec Scan
+    steps:
+    - task: tfsec@1
+      inputs:
+        version: 'v1.26.0'
+        dir: '$(System.DefaultWorkingDirectory)/environment/dev'
+
+  - job: tflint
+    dependsOn: tfsec
+    displayName: TFLint
+    steps:
+    - task: PowerShell@2
+      displayName: Install & Run TFLint
+      inputs:
+        targetType: 'inline'
+        script: |
+          choco install tflint -y
+          tflint
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev'
+
+# =========================
+# 2. Cost & Impact Assessment
+# =========================
+- stage: costStage
+  dependsOn: PreCommit
+  displayName: Cost & Impact Assessment Stage
+  jobs: 
+  - job: InfraCost
+    displayName: InfraCost
+    steps:
+    - task: PowerShell@2
+      displayName: Install Infracost
+      inputs:
+        targetType: 'inline'
+        script: |
+          choco install infracost -y
+          infracost --version
+    - task: PowerShell@2
+      displayName: Run Infracost Breakdown
+      inputs:
+        targetType: 'inline'
+        script: 'infracost breakdown --path=.'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev'
+
+# =========================
+# 3. Plan Stage
+# =========================
+- stage: plan
+  dependsOn: costStage
+  displayName: Plan & Review Stage
+  jobs: 
+  - job: TerraformPlan
+    displayName: Terraform Plan
+    steps: 
+    - task: TerraformTask@5
+      displayName: Terraform Init
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev'
+        backendServiceArm: 'The Pipeline Agent Yogi'
+        backendAzureRmResourceGroupName: 'pipeline-rg'
+        backendAzureRmStorageAccountName: 'chilliii1234'
+        backendAzureRmContainerName: 'billu'
+        backendAzureRmKey: 'yogi.tfstate'
+
+    - task: TerraformTask@5
+      displayName: Terraform Plan
+      inputs:
+        provider: 'azurerm'
+        command: 'plan'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev'
+        environmentServiceNameAzureRM: 'The Pipeline Agent Yogi'
+
+# =========================
+# 4. Manual Approval
+# =========================
+- stage: approval
+  dependsOn: plan
+  displayName: Approval & Governance Stage
+  jobs:
+  - job: ManualApproval
+    displayName: Manual Approval
+    pool: server
+    steps: 
+    - task: ManualValidation@1
+      inputs:
+        notifyUsers: 'falana@gmail.com'
+
+# =========================
+# 5. Apply / Deploy
+# =========================
+- stage: apply
+  dependsOn: approval
+  displayName: Deploy / Apply Stage
+  jobs:
+  - job: TerraformApply
+    displayName: Terraform Apply
+    steps:
+    - task: TerraformTask@5
+      displayName: Terraform Init
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev'
+        backendServiceArm: 'The Pipeline Agent Yogi'
+        backendAzureRmResourceGroupName: 'pipeline-rg'
+        backendAzureRmStorageAccountName: 'chilliii1234'
+        backendAzureRmContainerName: 'billu'
+        backendAzureRmKey: 'yogi.tfstate'
+
+    - task: TerraformTask@5
+      displayName: Terraform Apply
+      inputs:
+        provider: 'azurerm'
+        command: 'apply'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/environment/dev'
+        environmentServiceNameAzureRM: 'The Pipeline Agent Yogi'
