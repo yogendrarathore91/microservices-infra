@@ -17,14 +17,14 @@ stages:
     - task: TerraformInstaller@1
       displayName: Install Terraform
       inputs:
-        terraformVersion: '1.13.5'
+        terraformVersion: '1.9.8'
 
     - task: TerraformTaskV4@4
       displayName: Terraform Init
       inputs:
         provider: 'azurerm'
         command: 'init'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/microservices-infra/env/prod'
         backendServiceArm: 'svc-nov'
         backendAzureRmOverrideSubscriptionID: '14c9203d-48fc-4de2-88d2-8c1ce158301c'
         backendAzureRmResourceGroupName: 'pipeline-rg'
@@ -38,7 +38,7 @@ stages:
       inputs:
         provider: 'azurerm'
         command: 'validate'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/microservices-infra/env/prod'
         environmentServiceNameAzureRM: 'svc-nov'
         environmentAzureRmOverrideSubscriptionID: '14c9203d-48fc-4de2-88d2-8c1ce158301c'
 
@@ -51,7 +51,7 @@ stages:
       inputs:
         provider: 'azurerm'
         command: 'custom'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/microservices-infra/env/prod'
         environmentServiceNameAzureRM: 'svc-nov'
         commandOptions: 'fmt -recursive'
 
@@ -62,7 +62,7 @@ stages:
     - task: tfsec@1
       inputs:
         version: 'v1.26.0'
-        dir: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+        dir: '$(System.DefaultWorkingDirectory)/microservices-infra/env/prod'
 
   - job: tflint
     dependsOn: tfsec
@@ -75,7 +75,7 @@ stages:
         script: |
           choco install tflint -y
           tflint
-        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/microservices-infra/env/prod'
 
 # =========================
 # 2. Cost & Impact Assessment
@@ -100,7 +100,7 @@ stages:
       inputs:
         targetType: 'inline'
         script: 'infracost breakdown --path=.'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/microservices-infra/env/prod'
 
 # =========================
 # 3. Plan Stage
@@ -117,7 +117,7 @@ stages:
       inputs:
         provider: 'azurerm'
         command: 'init'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/microservices-infra/env/prod'
         backendServiceArm: 'svc-nov'
         backendAzureRmOverrideSubscriptionID: '14c9203d-48fc-4de2-88d2-8c1ce158301c'
         backendAzureRmResourceGroupName: 'pipeline-rg'
@@ -133,7 +133,7 @@ stages:
       inputs:
         provider: 'azurerm'
         command: 'plan'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/microservices-infra/env/prod'
         environmentServiceNameAzureRM: 'svc-nov'
         environmentAzureRmOverrideSubscriptionID: '14c9203d-48fc-4de2-88d2-8c1ce158301c'
         commandOptions: '-input=false -var-file="terraform.tfvars" -detailed-exitcode'
@@ -168,7 +168,7 @@ stages:
       inputs:
         provider: 'azurerm'
         command: 'apply'
-        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/microservices-infra/env/prod'
         environmentServiceNameAzureRM: 'svc-nov'
         environmentAzureRmOverrideSubscriptionID: '14c9203d-48fc-4de2-88d2-8c1ce158301c'
         commandOptions: '-input=false -auto-approve'
