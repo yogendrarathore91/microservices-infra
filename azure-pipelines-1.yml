@@ -2,25 +2,173 @@ trigger: none
 
 pool: The Pipeline Agent Yogi
 
-steps:
-- checkout: self
+stages:
+# =========================
+# 1. Pre-Commit / Static Analysis
+# =========================
+- stage: PreCommit
+  displayName: Pre-Commit / Static Analysis Stage
+  jobs: 
+  - job: TerraformValidate
+    displayName: Terraform Init & Validate
+    steps:
+    - checkout: self
 
-# 1) Terraform install
-- task: TerraformInstaller@1
-  displayName: Install Terraform
-  inputs:
-    terraformVersion: '1.13.5'
+    - task: TerraformInstaller@1
+      displayName: Install Terraform
+      inputs:
+        terraformVersion: '1.13.5'
 
-# 2) terraform init with remote backend
-- task: TerraformTaskV4@4
-  displayName: terraform init
-  inputs:
-    provider: 'azurerm'
-    command: 'init'
-    workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
-    backendServiceArm: 'svc-nov'
-    backendAzureRmOverrideSubscriptionID: '14c9203d-48fc-4de2-88d2-8c1ce158301c'
-    backendAzureRmResourceGroupName: 'pipeline-rg'
-    backendAzureRmStorageAccountName: 'chilliii1234'
-    backendAzureRmContainerName: 'billu'
-    backendAzureRmKey: 'yogi.tfstate'
+    - task: TerraformTaskV4@4
+      displayName: Terraform Init
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+        backendServiceArm: 'svc-nov'
+        backendAzureRmOverrideSubscriptionID: '14c9203d-48fc-4de2-88d2-8c1ce158301c'
+        backendAzureRmResourceGroupName: 'pipeline-rg'
+        backendAzureRmStorageAccountName: 'chilliii1234'
+        backendAzureRmContainerName: 'billu'
+        backendAzureRmKey: 'yogi.tfstate'
+        commandOptions: '-input=false'
+
+    - task: TerraformTaskV4@4
+      displayName: Terraform Validate
+      inputs:
+        provider: 'azurerm'
+        command: 'validate'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+        environmentServiceNameAzureRM: 'svc-nov'
+        environmentAzureRmOverrideSubscriptionID: '14c9203d-48fc-4de2-88d2-8c1ce158301c'
+
+  - job: TerraformFmt
+    dependsOn: TerraformValidate
+    displayName: Terraform Fmt
+    steps:
+    - task: TerraformTaskV4@4
+      displayName: Terraform Fmt
+      inputs:
+        provider: 'azurerm'
+        command: 'custom'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+        environmentServiceNameAzureRM: 'svc-nov'
+        commandOptions: 'fmt -recursive'
+
+  - job: tfsec
+    dependsOn: TerraformFmt
+    displayName: TfSec Scan
+    steps:
+    - task: tfsec@1
+      inputs:
+        version: 'v1.26.0'
+        dir: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+
+  - job: tflint
+    dependsOn: tfsec
+    displayName: TFLint
+    steps:
+    - task: PowerShell@2
+      displayName: Install & Run TFLint
+      inputs:
+        targetType: 'inline'
+        script: |
+          choco install tflint -y
+          tflint
+        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+
+# =========================
+# 2. Cost & Impact Assessment
+# =========================
+- stage: costStage
+  dependsOn: PreCommit
+  displayName: Cost & Impact Assessment Stage
+  jobs: 
+  - job: InfraCost
+    displayName: InfraCost
+    steps:
+    - task: PowerShell@2
+      displayName: Install Infracost
+      inputs:
+        targetType: 'inline'
+        script: |
+          choco install infracost -y
+          infracost --version
+
+    - task: PowerShell@2
+      displayName: Run Infracost Breakdown
+      inputs:
+        targetType: 'inline'
+        script: 'infracost breakdown --path=.'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+
+# =========================
+# 3. Plan Stage
+# =========================
+- stage: plan
+  dependsOn: costStage
+  displayName: Plan & Review Stage
+  jobs:
+  - job: TerraformPlan
+    displayName: Terraform Plan
+    steps:
+    - task: TerraformTaskV4@4
+      displayName: Terraform Init
+      inputs:
+        provider: 'azurerm'
+        command: 'init'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+        backendServiceArm: 'svc-nov'
+        backendAzureRmOverrideSubscriptionID: '14c9203d-48fc-4de2-88d2-8c1ce158301c'
+        backendAzureRmResourceGroupName: 'pipeline-rg'
+        backendAzureRmStorageAccountName: 'chilliii1234'
+        backendAzureRmContainerName: 'billu'
+        backendAzureRmKey: 'yogi.tfstate'
+        commandOptions: '-input=false'
+
+    - task: TerraformTaskV4@4
+      displayName: Terraform Plan
+      env:
+        TF_INPUT: 'false'
+      inputs:
+        provider: 'azurerm'
+        command: 'plan'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+        environmentServiceNameAzureRM: 'svc-nov'
+        environmentAzureRmOverrideSubscriptionID: '14c9203d-48fc-4de2-88d2-8c1ce158301c'
+        commandOptions: '-input=false -var-file="terraform.tfvars" -detailed-exitcode'
+
+# =========================
+# 4. Manual Approval
+# =========================
+- stage: approval
+  dependsOn: plan
+  displayName: Approval & Governance Stage
+  jobs:
+  - job: ManualApproval
+    displayName: Manual Approval
+    pool: server
+    steps:
+    - task: ManualValidation@1
+      inputs:
+        notifyUsers: 'falana@gmail.com'
+
+# =========================
+# 5. Apply / Deploy
+# =========================
+- stage: apply
+  dependsOn: approval
+  displayName: Deploy / Apply Stage
+  jobs:
+  - job: TerraformApply
+    displayName: Terraform Apply
+    steps:
+    - task: TerraformTaskV4@4
+      displayName: Terraform Apply
+      inputs:
+        provider: 'azurerm'
+        command: 'apply'
+        workingDirectory: '$(System.DefaultWorkingDirectory)/enviroment/dev'
+        environmentServiceNameAzureRM: 'svc-nov'
+        environmentAzureRmOverrideSubscriptionID: '14c9203d-48fc-4de2-88d2-8c1ce158301c'
+        commandOptions: '-input=false -auto-approve'
